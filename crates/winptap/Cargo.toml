@@ -1,0 +1,62 @@
+[package]
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+name = "winptap"
+description = "Rust-native Windows Packet Monitor packet capture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "../../README.md"
+
+[features]
+default = ["pktmon", "native"]
+pktmon = ["dep:winptap-pktmon"]
+native = ["dep:winptap-native"]
+tokio = ["winptap-core/tokio", "dep:tokio"]
+
+[dependencies]
+winptap-core.workspace = true
+winptap-pktmon = { workspace = true, optional = true }
+winptap-native = { workspace = true, optional = true }
+tokio = { version = "1", optional = true, features = ["time"] }
+
+[lints]
+workspace = true
+
+[[example]]
+name = "list_devices"
+path = "../../examples/list_devices.rs"
+
+[[example]]
+name = "capture"
+path = "../../examples/capture.rs"
+
+[[example]]
+name = "capture_native"
+path = "../../examples/capture_native.rs"
+
+[[example]]
+name = "ethernet"
+path = "../../examples/ethernet.rs"
+
+[[example]]
+name = "benchmark"
+path = "../../examples/benchmark.rs"
+
+[[example]]
+name = "capture_async"
+path = "../../examples/capture_async.rs"
+required-features = ["tokio"]
+
+[[example]]
+name = "dump"
+path = "../../examples/dump.rs"
+
+[dev-dependencies]
+netdev = "0.46.3"
+nex = "0.27.0"
+ctrlc = "3"
+tokio = { version = "1", features = ["rt", "macros", "time"] }

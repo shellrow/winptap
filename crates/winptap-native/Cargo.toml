@@ -1,0 +1,22 @@
+[package]
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+name = "winptap-native"
+description = "Independent native Packet Monitor RX capture for Windows x64"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+winptap-core.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Memory", "Win32_System_SystemInformation", "Win32_System_Services"] }
+
+[lints]
+workspace = true
+
+

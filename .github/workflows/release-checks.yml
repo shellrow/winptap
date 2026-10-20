@@ -1,0 +1,22 @@
+name: Manual release preparation checks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace --all-features --locked
+      - run: cargo doc --workspace --all-features --no-deps
+      - name: Inspect package contents without publishing
+        shell: pwsh
+        run: |
+          foreach ($crate in @("winptap-core", "winptap-pktmon", "winptap-native", "winptap")) {
+            cargo package --list --allow-dirty -p $crate
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Maintainer release gate
+        run: Write-Output "No release is created. Review docs/compatibility.md and perform packaging and publication manually."

@@ -1,0 +1,20 @@
+[package]
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+name = "winptap-pktmon"
+description = "Official Windows Packet Monitor streaming backend for winptap"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+winptap-core.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_LibraryLoader"] }
+
+[lints]
+workspace = true
