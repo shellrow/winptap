@@ -726,7 +726,7 @@ checksum = "9aec5da331524158c6d1a4ac0ab1541149c0b9505fde06423b02f5ef0106b9f0"
 
 [[package]]
 name = "winptap"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ctrlc",
  "netdev",
@@ -739,14 +739,14 @@ dependencies = [
 
 [[package]]
 name = "winptap-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "winptap-native"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "windows-sys 0.61.2",
  "winptap-core",
@@ -754,7 +754,7 @@ dependencies = [
 
 [[package]]
 name = "winptap-pktmon"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "windows-sys 0.61.2",
  "winptap-core",
