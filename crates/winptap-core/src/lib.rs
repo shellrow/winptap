@@ -14,7 +14,6 @@ pub use metadata::*;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
     UnsupportedPlatform,
-    UnsupportedWindowsBuild { build: u32 },
     MissingApi(String),
     PermissionDenied,
     RevisionMismatch,
@@ -31,9 +30,6 @@ impl std::fmt::Display for Error {
         match self {
             Self::UnsupportedPlatform => {
                 f.write_str("capture backend is not supported on this platform")
-            }
-            Self::UnsupportedWindowsBuild { build } => {
-                write!(f, "unsupported Windows build {build}")
             }
             Self::MissingApi(api) => write!(f, "capture API unavailable: {api}"),
             Self::PermissionDenied => {
@@ -58,9 +54,7 @@ impl From<Error> for std::io::Error {
     fn from(error: Error) -> Self {
         use std::io::ErrorKind;
         let kind = match &error {
-            Error::UnsupportedPlatform
-            | Error::UnsupportedWindowsBuild { .. }
-            | Error::RevisionMismatch => ErrorKind::Unsupported,
+            Error::UnsupportedPlatform | Error::RevisionMismatch => ErrorKind::Unsupported,
             Error::MissingApi(_) => ErrorKind::NotFound,
             Error::PermissionDenied => ErrorKind::PermissionDenied,
             Error::InvalidConfig(_) | Error::InvalidState => ErrorKind::InvalidInput,
