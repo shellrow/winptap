@@ -42,6 +42,7 @@ impl PktmonSession {
                         let fresh = source::device(s);
                         fresh.id == device.id
                             && fresh.guid == device.guid
+                            && fresh.mac_address == device.mac_address
                             && fresh.name == device.name
                     })
                     .ok_or(Error::InvalidConfig(

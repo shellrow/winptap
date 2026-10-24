@@ -171,51 +171,18 @@ pub fn match_interface(
     interfaces: &[Interface],
     devices: &[winptap_core::Device],
 ) -> Result<usize> {
-    let identity = guid(&interface.name);
-    let candidates: Vec<_> = devices
-        .iter()
-        .enumerate()
-        .filter(|(_, d)| d.network_interface)
-        .collect();
-    let by_guid: Vec<_> = candidates
-        .iter()
-        .filter(|(_, d)| identity.is_some_and(|g| d.guid == Some(g) || guid(&d.name) == Some(g)))
-        .collect();
-    if !by_guid.is_empty() {
-        return Ok(unique(by_guid.into_iter(), "interface GUID")?.0);
+    fn identity(i: &Interface) -> winptap::InterfaceIdentity<'_> {
+        winptap::InterfaceIdentity {
+            name: &i.name,
+            description: i.description.as_deref(),
+            mac_address: i.mac_addr.map(|m| m.octets()),
+        }
     }
-    let labels: Vec<_> = [
-        Some(interface.name.as_str()),
-        interface.friendly_name.as_deref(),
-        interface.description.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    .filter(|s| !s.is_empty())
-    .collect();
-    let matching: Vec<_> = candidates
-        .into_iter()
-        .filter(|(_, d)| {
-            if d.guid.is_some() && identity.is_some() {
-                return false;
-            }
-            labels.iter().any(|label| {
-                (label.eq_ignore_ascii_case(&d.name) || label.eq_ignore_ascii_case(&d.description))
-                    && interfaces
-                        .iter()
-                        .filter(|i| {
-                            [
-                                Some(i.name.as_str()),
-                                i.friendly_name.as_deref(),
-                                i.description.as_deref(),
-                            ]
-                            .into_iter()
-                            .flatten()
-                            .any(|n| label.eq_ignore_ascii_case(n))
-                        })
-                        .all(|i| i.index == interface.index)
-            })
-        })
-        .collect();
-    Ok(unique(matching.iter(), "Packet Monitor interface mapping")?.0)
+    let identities: Vec<_> = interfaces.iter().map(identity).collect();
+    let candidates: Vec<_> = devices.iter().cloned().map(CaptureDevice).collect();
+    let selected = CaptureDevice::for_interface(identity(interface), &identities, &candidates)?;
+    devices
+        .iter()
+        .position(|d| d == &selected.0)
+        .ok_or_else(|| "selected capture device disappeared".into())
 }

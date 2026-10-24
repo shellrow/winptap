@@ -57,6 +57,8 @@ pub struct Device {
     pub network_interface: bool,
     /// Raw Windows GUID bytes, when the source supplies them.
     pub guid: Option<[u8; 16]>,
+    /// NIC hardware address when available. It is not necessarily globally unique.
+    pub mac_address: Option<[u8; 6]>,
 }
 #[derive(Clone, Debug)]
 pub struct PacketMetadata {

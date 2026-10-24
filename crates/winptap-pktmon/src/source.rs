@@ -89,9 +89,40 @@ pub(crate) fn device(s: &Source) -> Device {
         name: string(&s.name),
         description: string(&s.description),
         network_interface: s.kind == 1,
-        guid: (s.present & 1 != 0).then_some(detail),
+        // Detail is a union. Some Windows builds set both GUID and MAC flags
+        // but overwrite the first six GUID bytes with the MAC. Never expose
+        // that mixed value as an interface GUID.
+        guid: (s.present == 1).then_some(detail),
+        mac_address: matches!(s.present, 8 | 9).then(|| detail[..6].try_into().unwrap()),
     }
 }
 pub(crate) fn enumerate(context: &Context, hidden: bool) -> Result<Vec<Device>> {
     Ok(sources(context, hidden)?.iter().map(device).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn overwritten_union_is_not_reported_as_a_guid() {
+        let mut source = Source {
+            kind: 1,
+            name: [0; 64],
+            description: [0; 128],
+            id: 9,
+            secondary_id: 9,
+            parent_id: 0,
+            present: 9,
+            detail: [u64::from_le_bytes([0, 12, 41, 188, 70, 255, 152, 67]), 0],
+        };
+        let parsed = device(&source);
+        assert_eq!(parsed.guid, None);
+        assert_eq!(parsed.mac_address, Some([0, 12, 41, 188, 70, 255]));
+        source.present = 1;
+        assert!(device(&source).guid.is_some());
+        assert!(device(&source).mac_address.is_none());
+        source.present = 3;
+        assert!(device(&source).guid.is_none());
+        assert!(device(&source).mac_address.is_none());
+    }
 }

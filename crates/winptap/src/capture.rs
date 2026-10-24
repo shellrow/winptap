@@ -1,7 +1,7 @@
 use crate::*;
 use std::{sync::Arc, time::Duration};
 #[derive(Clone, Debug, Default)]
-pub struct CaptureConfig(winptap_core::Config);
+pub struct CaptureConfig(pub(crate) winptap_core::Config);
 impl CaptureConfig {
     pub fn builder() -> CaptureConfigBuilder {
         CaptureConfigBuilder::default()
@@ -144,7 +144,7 @@ impl Capture {
         result
     }
 }
-fn open_backend(config: winptap_core::Config) -> Result<Box<dyn winptap_core::Session>> {
+pub(crate) fn open_backend(config: winptap_core::Config) -> Result<Box<dyn winptap_core::Session>> {
     let selected = if config.backend == Backend::Auto {
         config.device.as_ref().map_or(Backend::Auto, |d| d.backend)
     } else {
