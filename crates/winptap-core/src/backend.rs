@@ -59,6 +59,16 @@ impl Default for Config {
 }
 impl Config {
     pub fn validate(&self) -> Result<()> {
+        if let Some(device) = &self.device {
+            if device.backend == Backend::Auto {
+                return Err(Error::InvalidConfig(
+                    "device must identify a concrete backend",
+                ));
+            }
+            if self.backend != Backend::Auto && self.backend != device.backend {
+                return Err(Error::InvalidConfig("device belongs to another backend"));
+            }
+        }
         if self.snaplen == 0 || self.snaplen > 9000 {
             return Err(Error::InvalidConfig("snaplen must be 1..=9000"));
         }

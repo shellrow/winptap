@@ -28,6 +28,137 @@ fn packet(bytes: &[u8], kind: u16) -> Packet {
     wire::decode_stream(&b, 0, 40, bytes.len() as u32, 9000, Backend::Pktmon).unwrap()
 }
 #[test]
+fn direction_only_filters_do_not_require_headers() {
+    for length in 0..14 {
+        let p = packet(&vec![0; length], 1);
+        assert!(Filter::default().matches(&p));
+        assert!(
+            Filter {
+                direction: Some(Direction::Receive),
+                ..Default::default()
+            }
+            .matches(&p)
+        );
+        assert!(
+            !Filter {
+                direction: Some(Direction::Transmit),
+                ..Default::default()
+            }
+            .matches(&p)
+        );
+        assert!(
+            !Filter {
+                source_port: Some(53),
+                ..Default::default()
+            }
+            .matches(&p)
+        );
+    }
+}
+#[test]
+fn ether_type_must_agree_with_ip_version() {
+    let mut b = frame(false);
+    b[12..14].copy_from_slice(&0x86ddu16.to_be_bytes());
+    assert!(
+        !Filter {
+            protocol: Some(17),
+            ..Default::default()
+        }
+        .matches(&packet(&b, 1))
+    );
+    let mut b = vec![0; 54];
+    b[12..14].copy_from_slice(&0x0800u16.to_be_bytes());
+    b[14] = 0x60;
+    assert!(
+        !Filter {
+            ip_version: Some(6),
+            ..Default::default()
+        }
+        .matches(&packet(&b, 1))
+    );
+}
+#[test]
+fn io_errors_preserve_typed_causes() {
+    for (error, kind) in [
+        (Error::Timeout, std::io::ErrorKind::TimedOut),
+        (Error::Cancelled, std::io::ErrorKind::Interrupted),
+        (
+            Error::PermissionDenied,
+            std::io::ErrorKind::PermissionDenied,
+        ),
+        (Error::InvalidData("test"), std::io::ErrorKind::InvalidData),
+        (
+            Error::MissingApi("test".into()),
+            std::io::ErrorKind::NotFound,
+        ),
+    ] {
+        let io = std::io::Error::from(error.clone());
+        assert_eq!(io.kind(), kind);
+        assert_eq!(io.get_ref().unwrap().downcast_ref::<Error>(), Some(&error));
+    }
+}
+#[cfg(feature = "tokio")]
+#[test]
+fn asynchronous_close_wakes_every_waiter() {
+    use std::{
+        future::Future,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        task::{Context, Wake, Waker},
+    };
+    struct Counter(AtomicUsize);
+    impl Wake for Counter {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    let q = PacketQueue::new(1, OverflowPolicy::DropNewest);
+    let counters = [
+        Arc::new(Counter(AtomicUsize::new(0))),
+        Arc::new(Counter(AtomicUsize::new(0))),
+    ];
+    let wakers = counters.clone().map(Waker::from);
+    let mut first = Box::pin(q.receive_async());
+    let mut second = Box::pin(q.receive_async());
+    assert!(
+        first
+            .as_mut()
+            .poll(&mut Context::from_waker(&wakers[0]))
+            .is_pending()
+    );
+    assert!(
+        second
+            .as_mut()
+            .poll(&mut Context::from_waker(&wakers[1]))
+            .is_pending()
+    );
+    q.close(Err(Error::Cancelled));
+    for counter in counters {
+        assert!(counter.0.load(Ordering::Relaxed) > 0);
+    }
+    for mut future in [first, second] {
+        assert!(matches!(
+            future.as_mut().poll(&mut Context::from_waker(&wakers[0])),
+            std::task::Poll::Ready(Err(Error::Cancelled))
+        ));
+    }
+}
+
+#[test]
+fn normally_closed_queue_drains_across_restart_but_errors_are_terminal() {
+    let q = PacketQueue::new(2, OverflowPolicy::DropNewest);
+    q.push(packet(&[1], 1));
+    q.close(Ok(()));
+    q.reopen().unwrap();
+    q.push(packet(&[2], 1));
+    assert_eq!(q.receive(None).unwrap().unwrap().data(), &[1]);
+    assert_eq!(q.receive(None).unwrap().unwrap().data(), &[2]);
+    q.close(Err(Error::Cancelled));
+    assert_eq!(q.reopen(), Err(Error::Cancelled));
+}
+#[test]
 fn fidelity_and_metadata() {
     let data = frame(true);
     let p = packet(&data, 1);

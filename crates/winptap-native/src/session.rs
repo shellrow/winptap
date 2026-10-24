@@ -134,90 +134,96 @@ impl Session for NativeSession {
         let stop = self.stop.clone();
         let queue = self.queue.clone();
         let config = self.config.clone();
-        self.reader = Some(
-            std::thread::Builder::new()
-                .name("winptap-native-reader".into())
-                .spawn(move || {
-                    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        let mut ring = shared_ring.lock().unwrap_or_else(|p| p.into_inner());
-                        while !stop.load(Ordering::Acquire) && !queue.is_closed() {
-                            let bytes = match ring.read() {
-                                Ok(Some(b)) => b,
-                                Ok(None) => {
-                                    std::thread::sleep(std::time::Duration::from_millis(1));
-                                    continue;
-                                }
-                                Err(e) => {
-                                    queue.close(Err(e));
-                                    break;
-                                }
-                            };
-                            if u32::from_le_bytes(bytes[8..12].try_into().unwrap()) != 40 {
-                                queue.close(Err(Error::InvalidData("native metadata version")));
-                                break;
-                            }
-                            let missed = u32::from_le_bytes(bytes[12..16].try_into().unwrap());
-                            queue.update_stats(|s| s.missed_writes += u64::from(missed));
-                            let packet = match winptap_core::wire::decode_stream(
-                                &bytes,
-                                24,
-                                64,
-                                (bytes.len() - 64) as u32,
-                                config.snaplen,
-                                Backend::NativeIoctl,
-                            )
-                            .and_then(|p| {
-                                p.with_original_len(u32::from_le_bytes(
-                                    bytes[..4].try_into().unwrap(),
-                                ))
-                            }) {
-                                Ok(p) => p,
-                                Err(_) => {
-                                    queue.update_stats(|s| s.parse_errors += 1);
-                                    continue;
-                                }
-                            };
-                            let m = packet.metadata();
-                            queue.update_stats(|s| {
-                                s.received += 1;
-                                if m.truncation == Truncation::CaptureLimitReached {
-                                    s.capture_limit_reached += 1;
-                                }
-                                if m.truncation == Truncation::Known {
-                                    s.known_truncations += 1;
-                                }
-                            });
-                            let component_ok = match config.duplicates {
-                                DuplicatePolicy::PreserveAll => true,
-                                DuplicatePolicy::Component(id) => m.component_id == id,
-                            };
-                            if m.direction != Direction::Receive
-                                || !component_ok
-                                || config.link_type.is_some_and(|v| v != m.link_type)
-                                || config
-                                    .capture_filter
-                                    .as_ref()
-                                    .is_some_and(|f| !f.matches(&packet))
-                                || config
-                                    .application_filter
-                                    .as_ref()
-                                    .is_some_and(|f| !f.matches(&packet))
-                            {
-                                queue.update_stats(|s| s.filtered += 1);
+        let reader = std::thread::Builder::new()
+            .name("winptap-native-reader".into())
+            .spawn(move || {
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let mut ring = shared_ring.lock().unwrap_or_else(|p| p.into_inner());
+                    while !stop.load(Ordering::Acquire) && !queue.is_closed() {
+                        let bytes = match ring.read() {
+                            Ok(Some(b)) => b,
+                            Ok(None) => {
+                                std::thread::sleep(std::time::Duration::from_millis(1));
                                 continue;
                             }
-                            queue.push(packet);
+                            Err(e) => {
+                                queue.close(Err(e));
+                                break;
+                            }
+                        };
+                        if u32::from_le_bytes(bytes[8..12].try_into().unwrap()) != 40 {
+                            queue.close(Err(Error::InvalidData("native metadata version")));
+                            break;
                         }
-                    }));
-                    if outcome.is_err() {
-                        queue.close(Err(Error::StreamFailed(1359)));
+                        let missed = u32::from_le_bytes(bytes[12..16].try_into().unwrap());
+                        queue.update_stats(|s| s.missed_writes += u64::from(missed));
+                        let packet = match winptap_core::wire::decode_stream(
+                            &bytes,
+                            24,
+                            64,
+                            (bytes.len() - 64) as u32,
+                            config.snaplen,
+                            Backend::NativeIoctl,
+                        )
+                        .and_then(|p| {
+                            p.with_original_len(u32::from_le_bytes(bytes[..4].try_into().unwrap()))
+                        }) {
+                            Ok(p) => p,
+                            Err(_) => {
+                                queue.update_stats(|s| s.parse_errors += 1);
+                                continue;
+                            }
+                        };
+                        let m = packet.metadata();
+                        queue.update_stats(|s| {
+                            s.received += 1;
+                            if m.truncation == Truncation::CaptureLimitReached {
+                                s.capture_limit_reached += 1;
+                            }
+                            if m.truncation == Truncation::Known {
+                                s.known_truncations += 1;
+                            }
+                        });
+                        let component_ok = match config.duplicates {
+                            DuplicatePolicy::PreserveAll => true,
+                            DuplicatePolicy::Component(id) => m.component_id == id,
+                        };
+                        if m.direction != Direction::Receive
+                            || !component_ok
+                            || config.link_type.is_some_and(|v| v != m.link_type)
+                            || config
+                                .capture_filter
+                                .as_ref()
+                                .is_some_and(|f| !f.matches(&packet))
+                            || config
+                                .application_filter
+                                .as_ref()
+                                .is_some_and(|f| !f.matches(&packet))
+                        {
+                            queue.update_stats(|s| s.filtered += 1);
+                            continue;
+                        }
+                        queue.push(packet);
                     }
-                })
-                .map_err(|_| Error::Windows {
-                    operation: "spawn native reader",
-                    code: 8,
-                })?,
-        );
+                }));
+                if outcome.is_err() {
+                    queue.close(Err(Error::StreamFailed(1359)));
+                }
+            })
+            .map_err(|error| Error::Windows {
+                operation: "spawn native reader",
+                code: error.raw_os_error().unwrap_or(8) as u32,
+            });
+        match reader {
+            Ok(reader) => self.reader = Some(reader),
+            Err(error) => {
+                // Activation succeeded but no consumer exists. Make this failure
+                // terminal and deactivate immediately, retaining Drop as a retry.
+                self.queue.close(Err(error.clone()));
+                let _ = self.stop();
+                return Err(error);
+            }
+        }
         Ok(())
     }
     fn stop(&mut self) -> Result<()> {
