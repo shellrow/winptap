@@ -29,7 +29,7 @@ found. The controlled IPv4/UDP fixture was sent from a second machine to port
 | Async cancellation | Both backends passed |
 | Native-only executable | Receive and 100 movable receiver cycles passed; handles 93 to 93 |
 | Bounded queue under traffic | Both policies and both backends retained exactly 8 packets and recorded overflow |
-| nex dev adapter | Trait/Send check and actual default-interface Ethernet receive passed |
+| nex-datalink compatibility | Receive-only trait/Send check and actual default-interface Ethernet receive passed |
 
 The main seven-test live run passed in 22.93 seconds. The additional backpressure
 test passed in 4.23 seconds, with a nominal sender rate of 1000 datagrams/s.
@@ -39,8 +39,9 @@ recorded queue overflow, and drained exactly eight packets. Parse errors and dri
 missed-read/write counters were zero. Multiple observations per datagram are
 preserved. Statistics need not sum to a datagram count, especially during shutdown.
 
-The nex fixture was compiled against dev revision
-`cec99308f25d8dc44fd3eaf54db6335c5141fe79`; the nex working tree was not modified.
+Receive-only integration with nex-datalink was verified against nex dev revision
+`cec99308f25d8dc44fd3eaf54db6335c5141fe79` using a temporary adapter. That validation
+code is not retained in this repository; the nex working tree was not modified.
 Live interface selection uncovered the mixed GUID/MAC union issue documented in
 [compatibility](compatibility.md). A regression test covers that record shape,
 and the normal capture example and nex receiver both succeeded after the fix.
@@ -53,7 +54,6 @@ Ordinary checks never open capture:
 ./scripts/validate.ps1
 cargo +1.85.0 check --workspace --lib --all-features --locked
 cargo +1.88.0 check --workspace --all-targets --all-features --locked
-cargo test --manifest-path integration/nex-datalink/Cargo.toml --all-targets
 ```
 
 Build the live executable, then run it sequentially in a controlled administrator

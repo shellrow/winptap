@@ -157,8 +157,7 @@ Packet bytes are copied from Windows without modification. Prefer NIC capture
 points when Ethernet headers matter. Offloading, truncation, and upper-stack
 capture points affect what Windows reports.
 
-See [nex integration](docs/nex-integration.md) for the receive-only adapter and
-[validation](docs/validation.md) for checks and outstanding live qualification.
+See [validation](docs/validation.md) for checks and outstanding live qualification.
 
 ## License
 

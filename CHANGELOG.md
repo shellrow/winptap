@@ -9,7 +9,6 @@
 - `InterfaceIdentity` and `CaptureDevice::for_interface` for dependency-independent
   GUID matching and unambiguous MAC/description fallback.
 - Typed capture error conversion to `std::io::Error`.
-- An opt-in adapter fixture compiled against the adjacent nex dev checkout.
 
 ### Fixed
 
