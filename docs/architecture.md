@@ -35,6 +35,13 @@ partial failure. The official backend loads the DLL from System32 and keeps it
 and the callback context alive until the stream closes. The stream closes before
 the session.
 
+`PacketReceiver` constructs the session on a dedicated owner thread and shares
+only its synchronized queue with callers. Startup uses a one-time handshake;
+errors join the owner before returning. A queue terminal notification wakes the
+owner to stop and drop the session. Explicit stop and receiver destruction join
+that thread. The adapter requires no unsafe `Send` implementation, additional
+packet queue, or extra payload copy.
+
 The native session retains its buffer allocations even if the reader panics.
 `stop` deactivates the session and joins the reader; the session can restart.
 Dropping it detaches the stream, deletes the session, closes the device, and
