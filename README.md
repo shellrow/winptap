@@ -3,6 +3,10 @@
 A Rust packet capture library for Windows, built on Packet Monitor. No Npcap or
 additional driver is required.
 
+[![Crates.io](https://img.shields.io/crates/v/winptap.svg)](https://crates.io/crates/winptap)
+[![Documentation](https://docs.rs/winptap/badge.svg)](https://docs.rs/winptap)
+[![License](https://img.shields.io/crates/l/winptap.svg)](#license)
+
 winptap provides synchronous and optional async capture, interface selection,
 packet filters, and capture statistics. Packet data includes the link type,
 timestamp, direction, and source component.
