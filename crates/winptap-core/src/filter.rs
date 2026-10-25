@@ -51,6 +51,20 @@ impl Filter {
         let mut offset = 0;
         let mut ether = None;
         let mut vlan_match = false;
+        let needs_ethernet = self.ether_type.is_some()
+            || self.source_mac.is_some()
+            || self.destination_mac.is_some()
+            || self.vlan_id.is_some();
+        let needs_ip = self.ip_version.is_some()
+            || self.source_ip.is_some()
+            || self.destination_ip.is_some()
+            || self.protocol.is_some()
+            || self.source_port.is_some()
+            || self.destination_port.is_some();
+        // A direction-only (or empty) predicate must work with any snaplen.
+        if !needs_ethernet && !needs_ip {
+            return Some(true);
+        }
         if p.metadata().link_type == LinkType::Ethernet {
             if self
                 .destination_mac
@@ -79,12 +93,6 @@ impl Filter {
         if self.vlan_id.is_some() && !vlan_match {
             return Some(false);
         }
-        let needs_ip = self.ip_version.is_some()
-            || self.source_ip.is_some()
-            || self.destination_ip.is_some()
-            || self.protocol.is_some()
-            || self.source_port.is_some()
-            || self.destination_port.is_some();
         if !needs_ip {
             return Some(true);
         }
@@ -116,6 +124,11 @@ impl Filter {
         }
         let b = b.get(offset..)?;
         let version = *b.first()? >> 4;
+        if matches!(ether, Some(0x0800)) && version != 4
+            || matches!(ether, Some(0x86dd)) && version != 6
+        {
+            return Some(false);
+        }
         if self.ip_version.is_some_and(|v| v != version) {
             return Some(false);
         }

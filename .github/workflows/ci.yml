@@ -22,6 +22,14 @@ jobs:
       - run: cargo check -p winptap --no-default-features --features pktmon
       - run: cargo check -p winptap --no-default-features --features native
       - run: cargo check -p winptap --no-default-features --features tokio
+      - run: cargo check -p winptap --no-default-features --features pktmon,tokio
+      - run: cargo check -p winptap --no-default-features --features native,tokio
       - run: cargo doc --workspace --all-features --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
+  msrv:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - run: cargo check --workspace --lib --all-features --locked

@@ -37,7 +37,7 @@ impl PacketQueue {
     fn wake(&self) {
         self.ready.notify_all();
         #[cfg(feature = "tokio")]
-        self.notify.notify_one();
+        self.notify.notify_waiters();
     }
     pub fn push(&self, packet: Packet) {
         let mut s = self.state.lock().unwrap_or_else(|p| p.into_inner());
@@ -77,6 +77,13 @@ impl PacketQueue {
         }
         drop(s);
         self.wake();
+    }
+    /// Wait until stopped, cancelled, or failed without consuming packets.
+    pub fn wait_closed(&self) {
+        let mut s = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        while s.terminal.is_none() {
+            s = self.ready.wait(s).unwrap_or_else(|p| p.into_inner());
+        }
     }
     /// Reopen a normally stopped queue; queued observations remain available.
     pub fn reopen(&self) -> Result<()> {
@@ -118,6 +125,10 @@ impl PacketQueue {
     pub async fn receive_async(&self) -> Result<Option<Packet>> {
         loop {
             let notified = self.notify.notified();
+            tokio::pin!(notified);
+            // Register before checking the queue so concurrent consumers and
+            // terminal broadcasts cannot lose a wakeup.
+            notified.as_mut().enable();
             match self.receive(Some(Duration::ZERO)) {
                 Err(Error::Timeout) => notified.await,
                 result => return result,

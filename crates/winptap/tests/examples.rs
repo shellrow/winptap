@@ -19,6 +19,7 @@ fn interface(index: u32, name: &str, description: &str) -> Interface {
 
 fn device(id: u32, description: &str) -> Device {
     Device {
+        mac_address: None,
         backend: Backend::NativeIoctl,
         id,
         secondary_id: id,

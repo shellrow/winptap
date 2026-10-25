@@ -2,6 +2,14 @@
 use std::time::{Duration, Instant};
 use winptap::*;
 fn config(backend: Backend, snaplen: u16) -> CaptureConfig {
+    config_with_capacity(backend, snaplen, 1024, OverflowPolicy::DropNewest)
+}
+fn config_with_capacity(
+    backend: Backend,
+    snaplen: u16,
+    capacity: usize,
+    policy: OverflowPolicy,
+) -> CaptureConfig {
     let name = std::env::var("WINPTAP_TEST_INTERFACE")
         .expect("set WINPTAP_TEST_INTERFACE to the driver name");
     let device = CaptureDevice::list_with_backend(backend)
@@ -13,6 +21,8 @@ fn config(backend: Backend, snaplen: u16) -> CaptureConfig {
         .backend(backend)
         .device(device)
         .snaplen(snaplen)
+        .queue_capacity(capacity)
+        .overflow_policy(policy)
         .link_type(LinkType::Ethernet)
         .capture_filter(Filter {
             protocol: Some(17),
@@ -123,6 +133,116 @@ fn live_lifecycle() {
         assert!(after <= before + 2, "handle growth: {before} -> {after}");
         println!("{backend:?}: process handles {before} -> {after}");
         println!("{backend:?}: 100 start/stop/drop cycles passed");
+    }
+}
+
+#[test]
+#[ignore = "requires an isolated administrator VM"]
+fn live_movable_receiver_lifecycle() {
+    let backends = [
+        #[cfg(feature = "pktmon")]
+        Backend::Pktmon,
+        #[cfg(feature = "native")]
+        Backend::NativeIoctl,
+    ];
+    for backend in backends {
+        drop(PacketReceiver::open(config(backend, 128)).unwrap());
+        let before = handle_count();
+        for iteration in 0..100 {
+            let receiver = PacketReceiver::open(config(backend, 128)).unwrap();
+            std::thread::spawn(move || {
+                let mut receiver = receiver;
+                if iteration % 2 == 0 {
+                    receiver.cancellation_token().cancel();
+                    assert_eq!(receiver.next_packet().unwrap_err(), Error::Cancelled);
+                } else {
+                    receiver.stop().unwrap();
+                    receiver.stop().unwrap();
+                }
+            })
+            .join()
+            .unwrap();
+        }
+        let after = handle_count();
+        assert!(after <= before + 2, "handle growth: {before} -> {after}");
+        println!("{backend:?}: 100 movable receiver cycles, handles {before} -> {after}");
+    }
+}
+
+#[test]
+#[ignore = "requires an isolated administrator VM and external controlled UDP traffic"]
+fn live_movable_receiver_capture() {
+    let _socket = std::net::UdpSocket::bind("0.0.0.0:48931").unwrap();
+    let backends = [
+        #[cfg(feature = "pktmon")]
+        Backend::Pktmon,
+        #[cfg(feature = "native")]
+        Backend::NativeIoctl,
+    ];
+    for backend in backends {
+        let receiver = PacketReceiver::open(config(backend, 9000)).unwrap();
+        std::thread::spawn(move || {
+            let mut receiver = receiver;
+            let start = Instant::now();
+            loop {
+                assert!(
+                    start.elapsed() < Duration::from_secs(15),
+                    "controlled traffic timed out"
+                );
+                match receiver.next_packet() {
+                    Ok(Some(packet))
+                        if packet
+                            .data()
+                            .windows(b"winptap-controlled-frame-".len())
+                            .any(|b| b == b"winptap-controlled-frame-") =>
+                    {
+                        assert_eq!(packet.metadata().backend, backend);
+                        assert_eq!(packet.metadata().link_type, LinkType::Ethernet);
+                        break;
+                    }
+                    Ok(Some(_)) | Err(Error::Timeout) => (),
+                    other => panic!("unexpected receive: {other:?}"),
+                }
+            }
+            receiver.stop().unwrap();
+            assert_eq!(receiver.statistics().parse_errors, 0);
+        })
+        .join()
+        .unwrap();
+    }
+}
+
+#[test]
+#[ignore = "requires an isolated administrator VM and controlled UDP traffic at 1000 packets/s"]
+fn live_queue_backpressure() {
+    let _socket = std::net::UdpSocket::bind("0.0.0.0:48931").unwrap();
+    let backends = [
+        #[cfg(feature = "pktmon")]
+        Backend::Pktmon,
+        #[cfg(feature = "native")]
+        Backend::NativeIoctl,
+    ];
+    for backend in backends {
+        for policy in [OverflowPolicy::DropNewest, OverflowPolicy::DropOldest] {
+            let mut receiver =
+                PacketReceiver::open(config_with_capacity(backend, 9000, 8, policy)).unwrap();
+            // Deliberately stall the application while the bounded producer runs.
+            std::thread::sleep(Duration::from_secs(1));
+            receiver.stop().unwrap();
+            let mut drained = 0;
+            while receiver.next_packet().unwrap().is_some() {
+                drained += 1;
+            }
+            let stats = receiver.statistics();
+            assert_eq!(drained, 8);
+            assert!(
+                stats.queue_overflow > 0,
+                "traffic did not exercise backpressure: {stats:?}"
+            );
+            assert_eq!(stats.parse_errors, 0);
+            assert_eq!(stats.delivered, drained);
+            println!("{backend:?} {policy:?}: {stats:?}");
+        }
     }
 }
 fn handle_count() -> u32 {

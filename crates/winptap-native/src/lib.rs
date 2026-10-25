@@ -44,6 +44,7 @@ pub fn capabilities() -> Result<Capabilities> {
     })
 }
 pub fn devices() -> Result<Vec<Device>> {
+    compat::require_supported_platform()?;
     #[cfg(windows)]
     {
         discovery::enumerate(&device::DeviceHandle::open()?)

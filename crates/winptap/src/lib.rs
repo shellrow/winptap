@@ -5,7 +5,11 @@
 //! See the repository compatibility document before deploying this library.
 #![forbid(unsafe_code)]
 mod capture;
+mod device;
+mod receiver;
 pub use capture::*;
+pub use device::InterfaceIdentity;
+pub use receiver::PacketReceiver;
 pub use winptap_core::{
     Backend, CancellationToken, Capabilities, Direction, DuplicatePolicy, Error, Filter, LinkType,
     OverflowPolicy, Packet, PacketMetadata, Result, Statistics, Truncation,

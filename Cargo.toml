@@ -3,7 +3,7 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["shellrow <shellrow@foctal.com>"]
@@ -13,9 +13,9 @@ keywords = ["network"]
 categories = ["network-programming"]
 
 [workspace.dependencies]
-winptap-core = { path = "crates/winptap-core", version = "0.1.0" }
-winptap-pktmon = { path = "crates/winptap-pktmon", version = "0.1.0" }
-winptap-native = { path = "crates/winptap-native", version = "0.1.0" }
+winptap-core = { path = "crates/winptap-core", version = "0.2.0" }
+winptap-pktmon = { path = "crates/winptap-pktmon", version = "0.2.0" }
+winptap-native = { path = "crates/winptap-native", version = "0.2.0" }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

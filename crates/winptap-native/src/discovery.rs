@@ -43,6 +43,7 @@ pub(crate) fn enumerate(handle: &DeviceHandle) -> Result<Vec<Device>> {
                         description: text(&b[128..384]),
                         network_interface: kind == 2,
                         guid: None,
+                        mac_address: None,
                     });
                 }
                 return Ok(result);

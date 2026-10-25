@@ -3,6 +3,10 @@
 A Rust packet capture library for Windows, built on Packet Monitor. No Npcap or
 additional driver is required.
 
+[![Crates.io](https://img.shields.io/crates/v/winptap.svg)](https://crates.io/crates/winptap)
+[![Documentation](https://docs.rs/winptap/badge.svg)](https://docs.rs/winptap)
+[![License](https://img.shields.io/crates/l/winptap.svg)](#license)
+
 winptap provides synchronous and optional async capture, interface selection,
 packet filters, and capture statistics. Packet data includes the link type,
 timestamp, direction, and source component.
@@ -13,10 +17,13 @@ timestamp, direction, and source component.
 - Windows x64 for the native backend.
 - Rust 1.88 or newer to build the examples and run tests.
 
-Both backends have been tested on Windows 11 build 26200.9457. See
-[compatibility](docs/compatibility.md) for backend requirements and known limits.
+See [compatibility](docs/compatibility.md) for backend requirements and known limits,
+and [validation](docs/validation.md) for tested environments and results.
 
 ## Usage
+
+The following example targets the unreleased v0.2.0 API from this checkout.
+The published v0.1.0 remains available on crates.io.
 
 ```toml
 [dependencies]
@@ -25,37 +32,33 @@ netdev = "0.46.3"
 ```
 
 ```rust,no_run
-use winptap::{Capture, CaptureConfig, CaptureDevice, LinkType};
+use winptap::{CaptureConfig, CaptureDevice, InterfaceIdentity, LinkType, PacketReceiver};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let interface = netdev::get_default_interface()?;
-    let description = interface.description.as_deref()
-        .filter(|s| !s.is_empty())
-        .ok_or("default interface has no adapter description")?;
+    let interfaces = netdev::get_interfaces();
+    let identities: Vec<_> = interfaces.iter().map(|i| InterfaceIdentity {
+        name: &i.name,
+        description: i.description.as_deref(),
+        mac_address: i.mac_addr.map(|m| m.octets()),
+    }).collect();
+    let device = CaptureDevice::for_interface(
+        InterfaceIdentity {
+            name: &interface.name,
+            description: interface.description.as_deref(),
+            mac_address: interface.mac_addr.map(|m| m.octets()),
+        },
+        &identities,
+        &CaptureDevice::list()?,
+    )?;
 
-    // Match the adapter description, not the OS interface index.
-    if netdev::get_interfaces().iter().any(|other| {
-        other.index != interface.index
-            && other.description.as_deref()
-                .is_some_and(|s| s.eq_ignore_ascii_case(description))
-    }) {
-        return Err("adapter description is ambiguous; select a component explicitly".into());
-    }
-    let mut devices = CaptureDevice::list()?
-        .into_iter()
-        .filter(|d| d.network_interface && d.description.eq_ignore_ascii_case(description));
-    let device = devices.next().ok_or("default interface is not available for capture")?;
-    if devices.next().is_some() {
-        return Err("multiple capture components match the default interface".into());
-    }
-
-    let mut capture = Capture::open(
+    // PacketReceiver opens and starts capture on its dedicated owner thread.
+    let mut capture = PacketReceiver::open(
         CaptureConfig::builder()
             .device(device)
             .link_type(LinkType::Ethernet)
             .build()?,
     )?;
-    capture.start()?;
     while let Some(packet) = capture.next_packet()? {
         println!("{} bytes: {:?}", packet.data().len(), packet.metadata());
     }
@@ -64,9 +67,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-This snippet matches the default interface by its adapter description and rejects
-ambiguous matches. The command-line examples also support GUID matching and
-explicit component selection.
+Interface matching prefers the adapter GUID, then a MAC address or description unique among
+both OS interfaces and capture components. Conflicting GUIDs are never matched
+by description. The command-line examples also support explicit component selection.
 
 ## Examples
 
@@ -105,10 +108,14 @@ example dependencies, not library dependencies.
 
 ## Backends and features
 
-| Backend | Capture | Interface |
+| Backend | Traffic observed | Interface |
 |---|---|---|
 | `Backend::Pktmon` | Receive and transmit | Documented `Pktmonapi.dll` streaming API |
 | `Backend::NativeIoctl` | Receive only | Direct access to `PktMonDev` on Windows x64 |
+
+Neither backend injects or sends packets. Observing transmit traffic means
+capturing packets sent by other applications. Packet Monitor does not request
+promiscuous mode or provide a replacement for every Npcap feature.
 
 `Backend::Auto` prefers the official API and falls back to native capture when
 exports are missing or the API version is incompatible. Permission errors are
@@ -123,8 +130,9 @@ The default Cargo features are `pktmon` and `native`. Add `tokio` for
 cargo run -p winptap --features tokio --example capture_async
 ```
 
-A capture stays on its owning thread. Use a current-thread Tokio runtime or a
-`LocalSet`; cancellation tokens can be sent to other threads.
+`Capture` stays on its owning thread; use a current-thread Tokio runtime or a
+`LocalSet`. `PacketReceiver` owns a dedicated session thread and can move across
+threads, including into a multithreaded Tokio task. Both expose cancellation tokens.
 
 ## Capture behavior
 
@@ -137,6 +145,14 @@ returns `Error::Timeout`. After `stop`, queued packets remain readable, followed
 by `Ok(None)`. A stopped capture can restart. Fatal errors and cancellation are
 terminal; call `stop` or drop the capture to release active resources.
 
+`PacketReceiver` starts during `open` and cannot restart. It shares the backend's
+bounded queue without a second queue or extra packet copy. Cancellation and fatal
+errors wake its owner to release resources automatically; `stop` and `Drop` join
+the owner. Stopping normally preserves queued packets.
+
+Capture errors convert to `std::io::Error`, preserving the typed source and
+mapping timeouts to `TimedOut` and cancellation to `Interrupted`.
+
 `capture_filter` applies supported constraints in the driver and checks the full
 predicate in Rust. `application_filter` runs only in Rust. Filters support MAC
 addresses, EtherType, VLAN ID, IP addresses, protocol, ports, and direction.
@@ -144,6 +160,8 @@ addresses, EtherType, VLAN ID, IP addresses, protocol, ports, and direction.
 Packet bytes are copied from Windows without modification. Prefer NIC capture
 points when Ethernet headers matter. Offloading, truncation, and upper-stack
 capture points affect what Windows reports.
+
+See [validation](docs/validation.md) for checks and outstanding live qualification.
 
 ## License
 
