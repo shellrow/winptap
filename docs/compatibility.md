@@ -19,6 +19,10 @@ On the tested build, the GUID/MAC combination contains MAC bytes overwriting par
 of the GUID. winptap leaves `guid` unset in this case and exposes the MAC instead.
 `CaptureDevice::for_interface` prefers a valid GUID, then a MAC unique on both
 sides, then a unique description. A conflicting known identity is never ignored.
+NIC components with identical identity information in one parent/child hierarchy
+select the common parent capture point. This handles drivers that also expose a
+NetAdapterCx child. Independent components sharing a MAC still require a unique
+description or explicit component selection; enumeration order never breaks ties.
 The native enumerator supplies no MAC or GUID, so differing OS/driver descriptions
 can still require explicit component selection.
 

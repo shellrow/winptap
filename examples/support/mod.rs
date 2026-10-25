@@ -121,7 +121,10 @@ impl Options {
                 &interface,
                 &interfaces,
                 &devices.iter().map(|d| (**d).clone()).collect::<Vec<_>>(),
-            )?;
+            ).map_err(|error| format!(
+                "cannot map OS interface {} to a capture component: {error}; use --list and select --component ID explicitly",
+                interface.name,
+            ))?;
             devices[index].clone()
         };
         eprintln!(

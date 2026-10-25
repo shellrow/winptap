@@ -12,6 +12,8 @@
 
 ### Fixed
 
+- Interface selection resolves identity-equivalent parent/child NIC components
+  and uses unique descriptions to distinguish otherwise ambiguous MAC matches.
 - Empty and direction-only filters now accept short captured frames.
 - IP predicates reject EtherType/version mismatches.
 - Async queue termination wakes all registered consumers.
